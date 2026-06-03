@@ -72,9 +72,9 @@ fn apply_to_state(state: &mut DspState, cmd: &DspCommand) {
     }
 }
 
-// Push an audio stats snapshot to all connected clients every 500 ms.
+// Push an audio stats snapshot to all connected clients at 20 Hz.
 async fn stats_pusher(hub: Hub) {
-    let mut interval = tokio::time::interval(Duration::from_millis(500));
+    let mut interval = tokio::time::interval(Duration::from_millis(50));
     let mut last_reset = std::time::Instant::now();
     let mut frames_per_sec: u64 = 0;
 

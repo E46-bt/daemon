@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 pub const EQ_BANDS: usize = 10;
-pub const SOCKET_PATH: &str = "/run/carplay-audio.sock";
+pub const SOCKET_PATH: &str = "/run/carplay-audio/control.sock";
 pub const WS_PORT: u16 = 9000;
 
 // ─── Source ───────────────────────────────────────────────────────────────────

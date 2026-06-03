@@ -1,0 +1,28 @@
+[Unit]
+Description=carplay-audio DSP daemon
+Documentation=https://github.com/e46-bt/daemon
+After=network.target bluetooth.target shairport-sync.service bluealsa.service bluealsa-aplay.service
+Wants=shairport-sync.service bluealsa.service bluealsa-aplay.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/carplay-audio
+Restart=on-failure
+RestartSec=2
+
+# Needed for SCHED_FIFO on audio threads (no root required)
+AmbientCapabilities=CAP_SYS_NICE
+CapabilityBoundingSet=CAP_SYS_NICE
+
+# Create /run/carplay-audio.sock with correct permissions
+RuntimeDirectory=carplay-audio
+RuntimeDirectoryMode=0755
+
+# Basic hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/run/carplay-audio %h/.carplay-audio.json
+
+[Install]
+WantedBy=multi-user.target
