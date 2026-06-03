@@ -10,7 +10,7 @@ pub const PERIOD_SIZE: u32 = 2048;
 
 pub fn open_loopback_capture(device: &str) -> Result<PCM> {
     let pcm = PCM::new(device, Direction::Capture, false)
-        .with_context(|| format!("Impossible d'ouvrir le device ALSA capture: {}", device))?;
+        .with_context(|| format!("failed to open ALSA capture device: {}", device))?;
     {
         let hwp = HwParams::any(&pcm)?;
         hwp.set_channels(CHANNELS)?;
@@ -61,7 +61,7 @@ pub fn capture_loop(
                 if errno == libc::EPIPE || errno == libc::ESTRPIPE {
                     pcm.recover(errno, false)?;
                 } else {
-                    return Err(anyhow::anyhow!("Erreur capture AirPlay: {}", e));
+                    return Err(anyhow::anyhow!("AirPlay capture error: {}", e));
                 }
             }
         }

@@ -7,7 +7,7 @@ pub const EQ_FREQS: [f32; EQ_BANDS] = [
 ];
 const EQ_Q: f32 = 1.414;
 
-// ─── Coefficients biquad ─────────────────────────────────────────────────────
+// Biquad coefficients
 
 #[derive(Clone, Copy)]
 struct Coeffs {
@@ -69,7 +69,7 @@ impl Coeffs {
     }
 }
 
-// ─── Filtre biquad stéréo ─────────────────────────────────────────────────────
+// Stereo biquad filter (Direct Form II Transposed, separate L/R state for interleaved LRLR audio)
 
 struct BiquadStereo {
     c: Coeffs,
@@ -103,7 +103,7 @@ impl BiquadStereo {
     }
 }
 
-// ─── Pipeline DSP ─────────────────────────────────────────────────────────────
+// DSP pipeline
 
 pub struct DspPipeline {
     sr: f32,

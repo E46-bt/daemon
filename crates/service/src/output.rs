@@ -16,7 +16,7 @@ use crate::stats::AudioStats;
 
 pub fn open_output(device: &str, sample_rate: u32) -> Result<PCM> {
     let pcm = PCM::new(device, Direction::Playback, false)
-        .with_context(|| format!("Impossible d'ouvrir le device ALSA output: {}", device))?;
+        .with_context(|| format!("failed to open ALSA output device: {}", device))?;
     {
         let hwp = HwParams::any(&pcm)?;
         hwp.set_channels(CHANNELS)?;
@@ -46,7 +46,7 @@ pub fn playback_loop(
     let mut pipeline = DspPipeline::new(current_source.sample_rate() as f32);
 
     while running.load(Ordering::Relaxed) {
-        // Dépile toutes les commandes DSP disponibles
+        // Drain all pending DSP commands
         while let Ok(cmd) = cmd_rx.try_recv() {
             match &cmd {
                 DspCommand::SetSource { value } => {
@@ -88,7 +88,7 @@ pub fn playback_loop(
             },
         };
 
-        // Stats avant mute — VU-mètres actifs même en silence
+        // Compute stats before mute so VU meters stay active in silence
         stats.update(&block);
 
         let to_write: &[f32] = if muted.load(Ordering::Relaxed) {
@@ -106,7 +106,7 @@ pub fn playback_loop(
                 if errno == libc::EPIPE || errno == libc::ESTRPIPE {
                     pcm.recover(errno, false)?;
                 } else {
-                    return Err(anyhow::anyhow!("Erreur playback ALSA: {}", e));
+                    return Err(anyhow::anyhow!("ALSA playback error: {}", e));
                 }
             }
         }

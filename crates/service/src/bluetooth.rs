@@ -11,7 +11,7 @@ use libc;
 
 use crate::airplay::{CHANNELS, PERIOD_SIZE};
 
-/// bluez-alsa sort en 48 kHz — doit correspondre à la config bluez-alsa.
+/// Must match the rate configured in bluez-alsa (default: 48 kHz).
 pub const BT_SAMPLE_RATE: u32 = 48000;
 
 fn open_bt_capture(device: &str) -> Result<PCM> {
@@ -30,8 +30,8 @@ fn open_bt_capture(device: &str) -> Result<PCM> {
     Ok(pcm)
 }
 
-/// Thread de capture Bluetooth (A2DP via bluez-alsa → loopback ALSA).
-/// Réessaie toutes les 2 s si bluez-alsa n'est pas encore démarré.
+/// Bluetooth capture loop (A2DP via bluez-alsa -> ALSA loopback).
+/// Retries every 2 s if bluez-alsa is not yet running.
 pub fn capture_loop(device: &str, tx: Sender<Vec<f32>>, running: Arc<AtomicBool>) -> Result<()> {
     'outer: while running.load(Ordering::Relaxed) {
         let pcm = match open_bt_capture(device) {
