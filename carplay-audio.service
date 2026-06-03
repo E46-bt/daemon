@@ -10,19 +10,14 @@ ExecStart=/usr/local/bin/carplay-audio
 Restart=on-failure
 RestartSec=2
 
-# Needed for SCHED_FIFO on audio threads (no root required)
-AmbientCapabilities=CAP_SYS_NICE
-CapabilityBoundingSet=CAP_SYS_NICE
-
-# Create /run/carplay-audio.sock with correct permissions
+# RuntimeDirectory creates /run/carplay-audio/ for the Unix socket
 RuntimeDirectory=carplay-audio
 RuntimeDirectoryMode=0755
 
-# Basic hardening
+# CAP_SYS_NICE allows SCHED_FIFO on audio threads without running as root
+AmbientCapabilities=CAP_SYS_NICE
+CapabilityBoundingSet=CAP_SYS_NICE
 NoNewPrivileges=true
-ProtectSystem=strict
-ProtectHome=read-only
-ReadWritePaths=/run/carplay-audio %h/.carplay-audio.json
 
 [Install]
 WantedBy=multi-user.target
