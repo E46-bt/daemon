@@ -1,0 +1,19 @@
+# /etc/systemd/system/bt-agent.service
+#
+# Agent Bluetooth NoInputNoOutput : accepte tous les couplages automatiquement,
+# sans code PIN ni confirmation. Adapté à un autoradio (pas d'écran/clavier).
+# Nécessite : sudo apt install bluez-tools
+
+[Unit]
+Description=Bluetooth auto-pairing agent (NoInputNoOutput)
+After=bluetooth.service
+Requires=bluetooth.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/bt-agent --capability=NoInputNoOutput
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,20 @@
+# /etc/systemd/system/bluealsa-aplay.service
+#
+# Joue l'audio Bluetooth vers le loopback ALSA (substream 1).
+# bluealsa-aplay se reconnecte automatiquement à chaque appareil A2DP.
+
+[Unit]
+Description=BlueALSA aplay — Bluetooth audio vers hw:Loopback,0,1
+After=bluealsa.service sound.target
+Requires=bluealsa.service
+
+[Service]
+Type=simple
+# bt_sink est défini dans /etc/asound.conf :
+# normalise le format BT (44100/48000 Hz) → 48000 Hz S16LE avant d'écrire sur le loopback
+ExecStart=/usr/bin/bluealsa-aplay --pcm=bt_sink
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
