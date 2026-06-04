@@ -45,6 +45,8 @@ fn main() -> Result<()> {
     // Keep a reference to the canonical state so we can save it on shutdown
     let final_state_ref = hub.state.clone();
 
+    let (auto_src_tx, mut auto_src_rx) = tokio::sync::mpsc::unbounded_channel::<carplay_protocol::Source>();
+
     let airplay_handle = {
         let running = running.clone();
         thread::Builder::new()
@@ -84,6 +86,7 @@ fn main() -> Result<()> {
                     running,
                     muted,
                     source,
+                    auto_src_tx,
                 ) {
                     eprintln!("[playback] {}", e);
                 }
@@ -96,6 +99,7 @@ fn main() -> Result<()> {
     rt.block_on(async move {
         let hub_ws = hub.clone();
         let hub_ble = hub.clone();
+        let hub_auto = hub.clone();
 
         tokio::spawn(async move {
             if let Err(e) = server::ws::serve(hub_ws, WS_PORT).await {
@@ -106,6 +110,13 @@ fn main() -> Result<()> {
         tokio::spawn(async move {
             if let Err(e) = server::ble::serve(hub_ble).await {
                 eprintln!("[ble] {}", e);
+            }
+        });
+
+        // Forward auto-switch events from the playback thread to all connected clients.
+        tokio::spawn(async move {
+            while let Some(src) = auto_src_rx.recv().await {
+                hub_auto.dispatch(DspCommand::SetSource { value: src }).await;
             }
         });
 
