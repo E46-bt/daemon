@@ -7,7 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "Installing dependencies..."
 sudo apt-get update -q
-sudo apt-get install -y bluez bluez-alsa-utils bluez-tools
+sudo apt-get install -y bluez bluez-alsa-utils python3-dbus python3-gi
 
 echo "Configuring ALSA loopback (2 substreams)..."
 # snd_aloop needs at least 2 substreams: substream 0 for AirPlay, 1 for Bluetooth.
@@ -36,21 +36,31 @@ EOF
 echo "Configuring bluealsa (A2DP sink + HFP-AG)..."
 sudo mkdir -p /etc/systemd/system/bluealsa.service.d
 sudo tee /etc/systemd/system/bluealsa.service.d/override.conf > /dev/null << 'EOF'
+[Unit]
+StartLimitIntervalSec=0
+
 [Service]
 ExecStart=
-ExecStart=/usr/bin/bluealsa --profile=a2dp-sink --profile=hfp-ag
+ExecStart=/usr/bin/bluealsa --profile=a2dp-sink
 Restart=always
 RestartSec=3
-StartLimitIntervalSec=0
 TimeoutStopSec=5
 EOF
 
 echo "Enabling systemd services..."
+sudo cp "$SCRIPT_DIR/bt-agent.py"              /usr/local/bin/bt-agent.py
+sudo chmod +x /usr/local/bin/bt-agent.py
 sudo cp "$SCRIPT_DIR/bluealsa-aplay.service"   /etc/systemd/system/
 sudo cp "$SCRIPT_DIR/bt-agent.service"         /etc/systemd/system/
 sudo cp "$SCRIPT_DIR/bluetooth-init.service"   /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable bluealsa bluealsa-aplay bt-agent bluetooth-init
+
+echo "Clearing stored Bluetooth device state (fresh pairing after setup)..."
+ADAPTER_MAC=$(hciconfig hci0 2>/dev/null | grep "BD Address" | awk '{print $3}' || true)
+if [ -n "$ADAPTER_MAC" ]; then
+    sudo rm -rf "/var/lib/bluetooth/$ADAPTER_MAC/"
+fi
 
 echo "Starting services..."
 sudo systemctl restart bluetooth
