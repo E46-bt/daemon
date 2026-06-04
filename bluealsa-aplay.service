@@ -5,16 +5,17 @@
 
 [Unit]
 Description=BlueALSA aplay — Bluetooth audio vers hw:Loopback,0,1
-After=bluealsa.service sound.target
+After=bluealsa.service bluetooth-init.service sound.target
 Requires=bluealsa.service
 
 [Service]
 Type=simple
-# bt_sink est défini dans /etc/asound.conf :
-# normalise le format BT (44100/48000 Hz) → 48000 Hz S16LE avant d'écrire sur le loopback
+# bt_sink is defined in /etc/asound.conf:
+# normalizes BT format (44100/48000 Hz) → 48000 Hz S16LE before writing to the loopback
 ExecStart=/usr/bin/bluealsa-aplay --pcm=bt_sink
 Restart=always
-RestartSec=2
+RestartSec=5
+StartLimitIntervalSec=0
 
 [Install]
 WantedBy=multi-user.target

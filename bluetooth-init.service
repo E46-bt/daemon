@@ -1,0 +1,17 @@
+[Unit]
+Description=Bluetooth power-on and discoverable init
+After=bluetooth.service
+Requires=bluetooth.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c '\
+    rfkill unblock bluetooth; \
+    bluetoothctl power on; \
+    bluetoothctl discoverable on; \
+    bluetoothctl pairable on; \
+    bluetoothctl system-alias "BMW E46"'
+
+[Install]
+WantedBy=multi-user.target

@@ -32,14 +32,20 @@ sudo tee /etc/systemd/system/bluealsa.service.d/override.conf > /dev/null << 'EO
 [Service]
 ExecStart=
 ExecStart=/usr/bin/bluealsa --profile=a2dp-sink --profile=hfp-ag
+Restart=always
+RestartSec=3
+StartLimitIntervalSec=0
+TimeoutStopSec=5
 EOF
 
 echo "Enabling systemd services..."
-sudo cp "$SCRIPT_DIR/bluealsa-aplay.service" /etc/systemd/system/
-sudo cp "$SCRIPT_DIR/bt-agent.service"        /etc/systemd/system/
+sudo cp "$SCRIPT_DIR/bluealsa-aplay.service"   /etc/systemd/system/
+sudo cp "$SCRIPT_DIR/bt-agent.service"         /etc/systemd/system/
+sudo cp "$SCRIPT_DIR/bluetooth-init.service"   /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable bluealsa bluealsa-aplay bt-agent
+sudo systemctl enable bluealsa bluealsa-aplay bt-agent bluetooth-init
 sudo systemctl restart bluetooth bluealsa bluealsa-aplay bt-agent
+sudo systemctl restart bluetooth-init
 
 echo ""
 echo "Bluetooth configured."
