@@ -1,17 +1,20 @@
 [Unit]
-Description=Bluetooth power-on and discoverable init
+Description=Bluetooth power-on, alias and discoverable init
 After=bluetooth.service
 Requires=bluetooth.service
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
+# Retry power on until the adapter accepts it (hci0 can take a moment after bluetoothd starts)
 ExecStart=/bin/sh -c '\
-    rfkill unblock bluetooth; \
-    bluetoothctl power on; \
+    for i in $(seq 1 10); do \
+        bluetoothctl power on && break; \
+        sleep 1; \
+    done; \
+    bluetoothctl system-alias "BMW E46"; \
     bluetoothctl discoverable on; \
-    bluetoothctl pairable on; \
-    bluetoothctl system-alias "BMW E46"'
+    bluetoothctl pairable on'
 
 [Install]
 WantedBy=multi-user.target
