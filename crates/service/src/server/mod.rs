@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use carplay_protocol::{DspCommand, DspState, ServiceMessage};
+use carplay_protocol::{DspCommand, DspState, ServiceMessage, TrackInfo};
 use crossbeam_channel::Sender;
 use tokio::sync::{broadcast, RwLock};
 
@@ -24,6 +24,8 @@ pub struct Hub {
     // Canonical DSP state — source of truth for new client connections
     pub state: Arc<RwLock<DspState>>,
     pub stats: Arc<AudioStats>,
+    // Current track metadata; cached so new clients receive it on connect
+    pub now_playing: Arc<RwLock<Option<TrackInfo>>>,
 }
 
 impl Hub {
@@ -34,7 +36,14 @@ impl Hub {
             broadcast_tx,
             state: Arc::new(RwLock::new(initial_state)),
             stats,
+            now_playing: Arc::new(RwLock::new(None)),
         }
+    }
+
+    pub async fn set_now_playing(&self, track: Option<TrackInfo>) {
+        *self.now_playing.write().await = track.clone();
+        let info = track.unwrap_or_default();
+        let _ = self.broadcast_tx.send(ServiceMessage::NowPlaying(info));
     }
 
     // Process an incoming command: update canonical state, forward to DSP thread, broadcast,
@@ -122,6 +131,12 @@ async fn handle_unix_client(hub: Hub, stream: tokio::net::UnixStream) -> Result<
     // Send current state immediately on connect
     let initial = serde_json::to_string(&ServiceMessage::State(hub.state.read().await.clone()))? + "\n";
     writer.write_all(initial.as_bytes()).await?;
+
+    // Send cached track metadata if available
+    if let Some(ref info) = *hub.now_playing.read().await {
+        let np = serde_json::to_string(&ServiceMessage::NowPlaying(info.clone()))? + "\n";
+        writer.write_all(np.as_bytes()).await?;
+    }
 
     // Read incoming commands in a background task
     let hub_cmd = hub.clone();

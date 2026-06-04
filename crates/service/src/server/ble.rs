@@ -83,6 +83,13 @@ async fn register(adapter: &Adapter, hub: Hub) -> Result<BleSession> {
                         let _ = notifier.notify(json.into_bytes()).await;
                     }
 
+                    // Send cached track metadata if available
+                    if let Some(ref info) = *hub.now_playing.read().await {
+                        if let Ok(json) = serde_json::to_string(&ServiceMessage::NowPlaying(info.clone())) {
+                            let _ = notifier.notify(json.into_bytes()).await;
+                        }
+                    }
+
                     loop {
                         match rx.recv().await {
                             Ok(msg) => {

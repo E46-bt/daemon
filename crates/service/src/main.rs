@@ -1,5 +1,7 @@
 mod airplay;
+mod airplay_meta;
 mod bluetooth;
+mod bluetooth_meta;
 mod dsp;
 mod output;
 mod server;
@@ -13,6 +15,7 @@ use std::thread;
 use anyhow::Result;
 use carplay_protocol::{DspCommand, EQ_BANDS, SOCKET_PATH, WS_PORT};
 use crossbeam_channel::bounded;
+use tokio::sync::mpsc::unbounded_channel;
 
 use server::Hub;
 use stats::AudioStats;
@@ -45,7 +48,20 @@ fn main() -> Result<()> {
     // Keep a reference to the canonical state so we can save it on shutdown
     let final_state_ref = hub.state.clone();
 
-    let (auto_src_tx, mut auto_src_rx) = tokio::sync::mpsc::unbounded_channel::<carplay_protocol::Source>();
+    let (auto_src_tx, mut auto_src_rx) = unbounded_channel::<carplay_protocol::Source>();
+    let (meta_tx, mut meta_rx) = unbounded_channel::<Option<carplay_protocol::TrackInfo>>();
+
+    // AirPlay track metadata — reads shairport-sync metadata FIFO
+    let ap_meta_tx = meta_tx.clone();
+    thread::Builder::new()
+        .name("airplay-meta".into())
+        .spawn(move || airplay_meta::watch_loop(ap_meta_tx))?;
+
+    // Bluetooth track metadata — polls BlueZ MediaPlayer1 via D-Bus every 2s
+    let bt_meta_tx = meta_tx.clone();
+    thread::Builder::new()
+        .name("bt-meta".into())
+        .spawn(move || bluetooth_meta::watch_loop(bt_meta_tx))?;
 
     let airplay_handle = {
         let running = running.clone();
@@ -100,6 +116,7 @@ fn main() -> Result<()> {
         let hub_ws = hub.clone();
         let hub_ble = hub.clone();
         let hub_auto = hub.clone();
+        let hub_meta = hub.clone();
 
         tokio::spawn(async move {
             if let Err(e) = server::ws::serve(hub_ws, WS_PORT).await {
@@ -117,6 +134,13 @@ fn main() -> Result<()> {
         tokio::spawn(async move {
             while let Some(src) = auto_src_rx.recv().await {
                 hub_auto.dispatch(DspCommand::SetSource { value: src }).await;
+            }
+        });
+
+        // Forward track metadata updates from metadata watcher threads to all clients.
+        tokio::spawn(async move {
+            while let Some(track) = meta_rx.recv().await {
+                hub_meta.set_now_playing(track).await;
             }
         });
 

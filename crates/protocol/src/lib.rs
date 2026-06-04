@@ -103,10 +103,26 @@ impl DspState {
     }
 }
 
+/// Track metadata from the active source (AirPlay DAAP / Bluetooth AVRCP).
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct TrackInfo {
+    pub title: Option<String>,
+    pub artist: Option<String>,
+    pub album: Option<String>,
+    pub duration_ms: Option<u64>,
+}
+
+impl TrackInfo {
+    pub fn is_empty(&self) -> bool {
+        self.title.is_none() && self.artist.is_none() && self.album.is_none()
+    }
+}
+
 /// Enveloppe pour les messages poussés aux clients (newline-delimited JSON).
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ServiceMessage {
     Stats(StatsSnapshot),
     State(DspState),
+    NowPlaying(TrackInfo),
 }

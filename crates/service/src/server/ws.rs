@@ -44,6 +44,12 @@ async fn run_socket(socket: WebSocket, hub: Hub) -> Result<()> {
     let initial = serde_json::to_string(&ServiceMessage::State(hub.state.read().await.clone()))?;
     sender.send(Message::Text(initial.into())).await?;
 
+    // Send cached track metadata if available
+    if let Some(ref info) = *hub.now_playing.read().await {
+        let np = serde_json::to_string(&ServiceMessage::NowPlaying(info.clone()))?;
+        sender.send(Message::Text(np.into())).await?;
+    }
+
     // Read incoming commands in the background
     let hub_cmd = hub.clone();
     tokio::spawn(async move {

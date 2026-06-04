@@ -22,3 +22,5 @@ tokio-tungstenite = "0.24"
 futures-util = "0.3"
 bluer = { version = "0.17", features = ["full"] }
 uuid = { version = "1", features = ["v4"] }
+dbus = "0.9"
+base64 = "0.22"

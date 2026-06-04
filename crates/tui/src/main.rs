@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use carplay_protocol::{
-    DspCommand, DspState, EQ_BANDS, SOCKET_PATH, ServiceMessage, Source, StatsSnapshot,
+    DspCommand, DspState, EQ_BANDS, SOCKET_PATH, ServiceMessage, Source, StatsSnapshot, TrackInfo,
 };
 use crossbeam_channel::{bounded, Receiver, Sender};
 use crossterm::{
@@ -81,6 +81,7 @@ fn connect_and_read(msg_tx: &Sender<ServiceMessage>, cmd_rx: &Receiver<DspComman
 struct TuiState {
     dsp: DspState,
     stats: Option<StatsSnapshot>,
+    now_playing: Option<TrackInfo>,
     sel_band: usize,
     eq_edit: bool,
     connected: bool,
@@ -93,6 +94,7 @@ impl TuiState {
         Self {
             dsp: DspState::new(),
             stats: None,
+            now_playing: None,
             sel_band: 0,
             eq_edit: false,
             connected: false,
@@ -110,6 +112,9 @@ impl TuiState {
             ServiceMessage::Stats(s) => {
                 self.frames_per_sec = s.frames_per_sec;
                 self.stats = Some(s);
+            }
+            ServiceMessage::NowPlaying(info) => {
+                self.now_playing = if info.is_empty() { None } else { Some(info) };
             }
         }
     }
@@ -219,6 +224,7 @@ fn draw_ui(f: &mut ratatui::Frame, s: &TuiState) {
         .constraints([
             Constraint::Length(3),
             Constraint::Min(8),
+            Constraint::Length(4),
             Constraint::Length(8),
             Constraint::Length(3),
         ])
@@ -233,8 +239,9 @@ fn draw_ui(f: &mut ratatui::Frame, s: &TuiState) {
 
     draw_vu_meters(f, cols[0], s);
     draw_stats_panel(f, cols[1], s);
-    draw_dsp_panel(f, rows[2], s);
-    draw_footer(f, rows[3], s);
+    draw_now_playing(f, rows[2], s);
+    draw_dsp_panel(f, rows[3], s);
+    draw_footer(f, rows[4], s);
 }
 
 fn draw_header(f: &mut ratatui::Frame, area: Rect, s: &TuiState) {
@@ -367,6 +374,67 @@ fn draw_stats_panel(f: &mut ratatui::Frame, area: Rect, s: &TuiState) {
     ];
 
     f.render_widget(Paragraph::new(text).block(block).wrap(Wrap { trim: false }), area);
+}
+
+fn draw_now_playing(f: &mut ratatui::Frame, area: Rect, s: &TuiState) {
+    let source_color = match s.dsp.source {
+        Source::Airplay => Color::Cyan,
+        Source::Bluetooth => Color::Blue,
+    };
+    let block = Block::default()
+        .title(Line::from(vec![
+            Span::raw(" Now Playing · "),
+            Span::styled(s.dsp.source.name(), Style::default().fg(source_color)),
+            Span::raw(" "),
+        ]))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::DarkGray));
+
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    let rows = Layout::default()
+        .direction(LayoutDirection::Vertical)
+        .constraints([Constraint::Length(1), Constraint::Length(1)])
+        .split(inner);
+
+    match &s.now_playing {
+        None => {
+            f.render_widget(
+                Paragraph::new(Span::styled("—", Style::default().fg(Color::DarkGray))),
+                rows[0],
+            );
+        }
+        Some(info) => {
+            let title = info.title.as_deref().unwrap_or("Unknown Track");
+            f.render_widget(
+                Paragraph::new(Span::styled(
+                    title,
+                    Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+                )),
+                rows[0],
+            );
+
+            let sub = build_subtitle(info);
+            if !sub.is_empty() {
+                f.render_widget(
+                    Paragraph::new(Span::styled(sub, Style::default().fg(Color::DarkGray))),
+                    rows[1],
+                );
+            }
+        }
+    }
+}
+
+fn build_subtitle(info: &TrackInfo) -> String {
+    let artist = info.artist.as_deref().unwrap_or("");
+    let album = info.album.as_deref().unwrap_or("");
+    match (!artist.is_empty(), !album.is_empty()) {
+        (true, true) => format!("{} — {}", artist, album),
+        (true, false) => artist.to_string(),
+        (false, true) => album.to_string(),
+        (false, false) => String::new(),
+    }
 }
 
 fn draw_dsp_panel(f: &mut ratatui::Frame, area: Rect, s: &TuiState) {
