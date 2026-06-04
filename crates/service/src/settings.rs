@@ -2,7 +2,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-use carplay_protocol::{DspState, EQ_BANDS};
+use carplay_protocol::{DspState, EQ_BANDS, Source};
 
 #[derive(Serialize, Deserialize)]
 pub struct Settings {
@@ -10,6 +10,8 @@ pub struct Settings {
     pub eq_gains: Vec<f32>,
     pub loudness: bool,
     pub limiter: bool,
+    pub muted: bool,
+    pub source: Source,
 }
 
 impl Default for Settings {
@@ -19,6 +21,8 @@ impl Default for Settings {
             eq_gains: vec![0.0; EQ_BANDS],
             loudness: true,
             limiter: true,
+            muted: false,
+            source: Source::Airplay,
         }
     }
 }
@@ -30,6 +34,8 @@ impl From<&DspState> for Settings {
             eq_gains: s.eq_gains.clone(),
             loudness: s.loudness,
             limiter: s.limiter,
+            muted: s.muted,
+            source: s.source,
         }
     }
 }
@@ -44,7 +50,8 @@ impl From<Settings> for DspState {
             eq_gains,
             loudness: s.loudness,
             limiter: s.limiter,
-            ..DspState::new()
+            muted: s.muted,
+            source: s.source,
         }
     }
 }

@@ -37,7 +37,8 @@ impl Hub {
         }
     }
 
-    // Process an incoming command: update canonical state, forward to DSP thread, broadcast.
+    // Process an incoming command: update canonical state, forward to DSP thread, broadcast,
+    // and persist to disk (non-blocking).
     pub async fn dispatch(&self, cmd: DspCommand) {
         {
             let mut state = self.state.write().await;
@@ -45,7 +46,12 @@ impl Hub {
         }
         let _ = self.cmd_tx.try_send(cmd);
         let state = self.state.read().await.clone();
-        let _ = self.broadcast_tx.send(ServiceMessage::State(state));
+        let _ = self.broadcast_tx.send(ServiceMessage::State(state.clone()));
+        tokio::task::spawn_blocking(move || {
+            if let Err(e) = crate::settings::save(&state) {
+                eprintln!("[settings] save failed: {}", e);
+            }
+        });
     }
 
     // Start the stats pusher background task and the Unix socket listener.
