@@ -82,6 +82,9 @@ struct TuiState {
     dsp: DspState,
     stats: Option<StatsSnapshot>,
     now_playing: Option<TrackInfo>,
+    /// Wall-clock time when the last position_ms was received — used to interpolate
+    /// progress between (potentially slow) metadata updates.
+    position_received_at: Option<Instant>,
     sel_band: usize,
     eq_edit: bool,
     connected: bool,
@@ -95,6 +98,7 @@ impl TuiState {
             dsp: DspState::new(),
             stats: None,
             now_playing: None,
+            position_received_at: None,
             sel_band: 0,
             eq_edit: false,
             connected: false,
@@ -114,9 +118,28 @@ impl TuiState {
                 self.stats = Some(s);
             }
             ServiceMessage::NowPlaying(info) => {
-                self.now_playing = if info.is_empty() { None } else { Some(info) };
+                if info.is_empty() {
+                    self.now_playing = None;
+                    self.position_received_at = None;
+                } else {
+                    if info.position_ms.is_some() {
+                        self.position_received_at = Some(Instant::now());
+                    }
+                    self.now_playing = Some(info);
+                }
             }
         }
+    }
+
+    /// Interpolated playback position accounting for time elapsed since last update.
+    fn current_position_ms(&self) -> Option<u64> {
+        let info = self.now_playing.as_ref()?;
+        let pos = info.position_ms?;
+        let elapsed = self.position_received_at
+            .map(|t| t.elapsed().as_millis() as u64)
+            .unwrap_or(0);
+        let end = info.duration_ms.unwrap_or(u64::MAX);
+        Some((pos + elapsed).min(end))
     }
 }
 
@@ -224,7 +247,7 @@ fn draw_ui(f: &mut ratatui::Frame, s: &TuiState) {
         .constraints([
             Constraint::Length(3),
             Constraint::Min(8),
-            Constraint::Length(4),
+            Constraint::Length(5),
             Constraint::Length(8),
             Constraint::Length(3),
         ])
@@ -393,9 +416,14 @@ fn draw_now_playing(f: &mut ratatui::Frame, area: Rect, s: &TuiState) {
     let inner = block.inner(area);
     f.render_widget(block, area);
 
+    // 3 inner rows: title / artist+album / progress bar
     let rows = Layout::default()
         .direction(LayoutDirection::Vertical)
-        .constraints([Constraint::Length(1), Constraint::Length(1)])
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+        ])
         .split(inner);
 
     match &s.now_playing {
@@ -421,6 +449,21 @@ fn draw_now_playing(f: &mut ratatui::Frame, area: Rect, s: &TuiState) {
                     Paragraph::new(Span::styled(sub, Style::default().fg(Color::DarkGray))),
                     rows[1],
                 );
+            }
+
+            // Progress bar — shown only when we have both position and duration
+            if let (Some(pos), Some(dur)) = (s.current_position_ms(), info.duration_ms) {
+                if dur > 0 {
+                    let ratio = (pos as f64 / dur as f64).clamp(0.0, 1.0);
+                    let label = format!("{}  /  {}", fmt_ms(pos), fmt_ms(dur));
+                    f.render_widget(
+                        Gauge::default()
+                            .gauge_style(Style::default().fg(Color::DarkGray).bg(Color::Black))
+                            .ratio(ratio)
+                            .label(label),
+                        rows[2],
+                    );
+                }
             }
         }
     }
@@ -574,6 +617,12 @@ fn draw_footer(f: &mut ratatui::Frame, area: Rect, s: &TuiState) {
         .alignment(Alignment::Left);
 
     f.render_widget(footer, area);
+}
+
+fn fmt_ms(ms: u64) -> String {
+    let secs = ms / 1000;
+    let mins = secs / 60;
+    format!("{}:{:02}", mins, secs % 60)
 }
 
 fn linear_to_gauge_pct(linear: f32) -> f64 {

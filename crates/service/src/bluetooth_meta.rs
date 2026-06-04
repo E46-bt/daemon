@@ -54,7 +54,12 @@ fn get_track(conn: &Connection) -> Option<TrackInfo> {
             continue;
         }
 
-        return Some(TrackInfo { title, artist, album, duration_ms });
+        // Position is a direct u32 property of MediaPlayer1 (milliseconds)
+        let position_ms = player.get("Position")
+            .and_then(|v| arg::cast::<u32>(&*v.0))
+            .map(|&p| p as u64);
+
+        return Some(TrackInfo { title, artist, album, duration_ms, position_ms });
     }
 
     None

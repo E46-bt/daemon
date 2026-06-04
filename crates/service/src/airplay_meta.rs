@@ -8,15 +8,16 @@ use tokio::sync::mpsc::UnboundedSender;
 
 pub const PIPE_PATH: &str = "/tmp/shairport-sync-metadata";
 
-// Hex-encoded type and code values from the shairport-sync metadata pipe format.
+// Hex-encoded type / code values from the shairport-sync metadata pipe format.
 const T_SSNC: &str = "73736e63"; // "ssnc"
 const T_CORE: &str = "636f7265"; // "core"
 const C_MDST: &str = "6d647374"; // metadata block start
-const C_MDEN: &str = "6d64656e"; // metadata block end (emit track)
-const C_ENDR: &str = "656e6472"; // AirPlay session ended (clear track)
+const C_MDEN: &str = "6d64656e"; // metadata block end → emit track
+const C_ENDR: &str = "656e6472"; // AirPlay session ended → clear track
 const C_MINM: &str = "6d696e6d"; // track title (minimum item name)
 const C_ASAR: &str = "61736172"; // artist
 const C_ASAL: &str = "6173616c"; // album
+const C_PRGR: &str = "70726772"; // progress "start/current/end" at 44100 Hz RTP clock
 
 pub fn watch_loop(tx: UnboundedSender<Option<TrackInfo>>) {
     loop {
@@ -34,8 +35,10 @@ fn read_pipe(tx: &UnboundedSender<Option<TrackInfo>>) -> anyhow::Result<()> {
     let file = OpenOptions::new().read(true).write(true).open(PIPE_PATH)?;
     let reader = BufReader::new(file);
 
-    let mut pending = TrackInfo::default();
     let mut in_meta = false;
+    let mut pending = TrackInfo::default(); // assembling during mdst..mden
+    let mut current = TrackInfo::default(); // last emitted track (updated on prgr)
+    let mut last_sent_pos: Option<u64> = None;
 
     for line in reader.lines() {
         let line = line?;
@@ -48,11 +51,15 @@ fn read_pipe(tx: &UnboundedSender<Option<TrackInfo>>) -> anyhow::Result<()> {
             }
             (T_SSNC, C_MDEN) if in_meta => {
                 in_meta = false;
-                let _ = tx.send(Some(pending.clone()));
+                current = pending.clone();
+                last_sent_pos = None;
                 pending = TrackInfo::default();
+                let _ = tx.send(Some(current.clone()));
             }
             (T_SSNC, C_ENDR) => {
                 in_meta = false;
+                current = TrackInfo::default();
+                last_sent_pos = None;
                 let _ = tx.send(None);
             }
             (T_CORE, C_MINM) if in_meta => {
@@ -64,6 +71,27 @@ fn read_pipe(tx: &UnboundedSender<Option<TrackInfo>>) -> anyhow::Result<()> {
             (T_CORE, C_ASAL) if in_meta => {
                 pending.album = data.and_then(decode_b64);
             }
+            // prgr arrives both inside and outside metadata blocks
+            (T_SSNC, C_PRGR) => {
+                if let Some((pos_ms, dur_ms)) =
+                    data.and_then(decode_b64).as_deref().and_then(parse_progress)
+                {
+                    // Only re-emit when position changed by >= 1 s to avoid flooding
+                    let should_send = last_sent_pos
+                        .map(|p| pos_ms.abs_diff(p) >= 1000)
+                        .unwrap_or(true);
+
+                    if in_meta {
+                        pending.position_ms = Some(pos_ms);
+                        pending.duration_ms = Some(dur_ms);
+                    } else if !current.is_empty() && should_send {
+                        current.position_ms = Some(pos_ms);
+                        current.duration_ms = Some(dur_ms);
+                        last_sent_pos = Some(pos_ms);
+                        let _ = tx.send(Some(current.clone()));
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -71,9 +99,21 @@ fn read_pipe(tx: &UnboundedSender<Option<TrackInfo>>) -> anyhow::Result<()> {
     Ok(())
 }
 
+// Parse "start/current/end" RTP timestamps (44100 Hz clock) into (position_ms, duration_ms).
+fn parse_progress(s: &str) -> Option<(u64, u64)> {
+    let mut parts = s.trim().splitn(3, '/');
+    let start: u32 = parts.next()?.trim().parse().ok()?;
+    let current: u32 = parts.next()?.trim().parse().ok()?;
+    let end: u32 = parts.next()?.trim().parse().ok()?;
+    // Wrapping subtraction handles RTP timestamp rollover (u32 wraps at ~27 hours)
+    let pos_samples = current.wrapping_sub(start) as u64;
+    let dur_samples = end.wrapping_sub(start) as u64;
+    Some((pos_samples * 1000 / 44100, dur_samples * 1000 / 44100))
+}
+
 // Parse a single shairport-sync metadata XML item line.
 // Format: <item><type>HEX</type><code>HEX</code><length>N</length>[<data encoding="base64">B64</data>]</item>
-fn parse_item<'a>(line: &'a str) -> Option<(&'a str, &'a str, Option<&'a str>)> {
+fn parse_item(line: &str) -> Option<(&str, &str, Option<&str>)> {
     const TYPE_OPEN: &str = "<type>";
     const TYPE_CLOSE: &str = "</type>";
     const CODE_OPEN: &str = "<code>";

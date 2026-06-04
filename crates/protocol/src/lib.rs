@@ -110,6 +110,8 @@ pub struct TrackInfo {
     pub artist: Option<String>,
     pub album: Option<String>,
     pub duration_ms: Option<u64>,
+    /// Current playback position at the time this message was sent.
+    pub position_ms: Option<u64>,
 }
 
 impl TrackInfo {
