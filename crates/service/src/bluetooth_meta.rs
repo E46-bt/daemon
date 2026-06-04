@@ -38,11 +38,12 @@ fn get_track(conn: &Connection) -> Option<TrackInfo> {
         .ok()?;
 
     for (_path, ifaces) in &objects {
-        let player = ifaces.get("org.bluez.MediaPlayer1")?;
+        // Most D-Bus objects (adapter, devices) don't have MediaPlayer1 — skip them.
+        let Some(player) = ifaces.get("org.bluez.MediaPlayer1") else { continue };
 
-        let track_var = player.get("Track")?;
+        let Some(track_var) = player.get("Track") else { continue };
         // The Track property is a{sv} — cast the inner RefArg to PropMap
-        let track: &PropMap = arg::cast(&*track_var.0)?;
+        let Some(track) = arg::cast::<PropMap>(&*track_var.0) else { continue };
 
         let title = arg::prop_cast::<String>(track, "Title").cloned();
         let artist = arg::prop_cast::<String>(track, "Artist").cloned();
@@ -50,7 +51,7 @@ fn get_track(conn: &Connection) -> Option<TrackInfo> {
         let duration_ms = arg::prop_cast::<u32>(track, "Duration").map(|&ms| ms as u64);
 
         if title.is_none() && artist.is_none() && album.is_none() {
-            return None;
+            continue;
         }
 
         return Some(TrackInfo { title, artist, album, duration_ms });
